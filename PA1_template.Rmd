@@ -1,25 +1,161 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+author: "Michael Wood"
+date: "January 21, 2018"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
 
-## Loading and preprocessing the data
+library(ggplot2)
+
+# Create data directory if necessary                                            
+if(!file.exists("./data")){dir.create("./data")}                                
+                                                                                
+# Set fileURL and download data if necessary                                    
+fileURL <- ""                                                                   
+fileDL <- "./data/activity.csv"                                                 
+if(!file.exists(fileDL)){                                                       
+        download.file(fileURL, destfile=fileDL, method="curl")                  
+} 
+```
+## Pear-graded Assignment:  Course Project 1
+### Code for reading in the dataset and/or processing the data
+```{r Question 1}
+# Read CSV file
+fileDL <- "./data/activity.csv"
+csvData <- read.csv(fileDL)
+
+# Maintain CSV data in imported form 
+rawData <- csvData
+
+# Remove NA data from data set
+data.NArm <- subset(rawData, steps != "NA")                                     
+data.NArm$date <- as.Date(as.character(data.NArm$date))
+```
+
+### Histogram of the total number of steps taken each day
+```{r Question 2}
+# Sum total steps by date
+sumByDate <- as.data.frame(tapply(data.NArm$steps, data.NArm$date, FUN=sum))    
+colnames(sumByDate) <- c("TotalSteps")
+sumByDate$TotalSteps <- as.numeric(as.character(sumByDate$TotalSteps))
+```
+```{r Question 2 Plot}
+# Create histogram showing total steps by day
+hist(sumByDate$TotalSteps)
+```
 
 
+### Mean and median number of steps taken each day
+```{r Question 3}
+# Create data frame containing mean steps by date
+meanByDate2 <- as.data.frame(tapply(data.NArm$steps, data.NArm$date, FUN=mean)) 
+colnames(meanByDate2) <- c("MeanSteps")         
 
-## What is mean total number of steps taken per day?
+# Create data frame containing median steps by date
+medianByDate2 <- as.data.frame(tapply(data.NArm$steps, data.NArm$date, FUN=median)) 
+colnames(medianByDate2) <- c("MedianSteps")
+```
 
 
+### Time series plot of the average number of steps taken
+``` {r Question 4}
+# Create data frame containing average number of steps over time
+meanByInterval <- tapply(data.NArm$steps, data.NArm$interval, FUN=mean)         
+meanByInterval <- as.data.frame(cbind(meanByInterval, row.names(meanByInterval)))
+colnames(meanByInterval) <- c("MeanSteps", "Interval")                          
+meanByInterval$MeanSteps <- as.numeric(as.character(meanByInterval$MeanSteps))  
+meanByInterval$Interval <- as.integer(as.character(meanByInterval$Interval))    
+```
+``` {r Question 4 Plot}
+qplot(Interval, MeanSteps, data = meanByInterval, geom="line")+ theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
 
-## What is the average daily activity pattern?
+
+### The 5-minute interval that, on average, contains the maximum number of steps
+``` {r Question 5}
+subset(meanByInterval, MeanSteps == max(meanByInterval$MeanSteps))
+```
 
 
+### Code to describe and show a strategy for imputing missing data
+``` {r Question 6}
+na.sum <- sum(is.na(rawData))
+```
+There are `r na.sum` NA values in the original data set.
 
-## Imputing missing values
+One solution to this problem is to replace missing values with average values based on the correlating interval.
+``` {r Question 6 Part II}
+# Use mean for given 5-minute interval
+# Create new data set replacing NA values with mean by interval
+completeData <- rawData                                                         
+for( i in 1:nrow(completeData)) {                                               
+        if( is.na(completeData[i, "steps"])) {                                  
+                completeData[i, ]$steps <- meanByInterval[meanByInterval$Interval==completeData[i,"interval"], "MeanSteps"]
+        }                                                                       
+}
+completeData$date <- as.Date(as.character(completeData$date))                   
+sumByDate3 <- as.data.frame(tapply(completeData$steps, completeData$date, FUN=sum))
+colnames(sumByDate3) <- c("TotalSteps")                                         
+```
 
 
+### Histogram of the total number of steps taken each day after missing values are imputed
+The original summary values:
+``` {r Question 7}
+# Summaries showing variations in data sets coming from replacing values with mean values.
+summary(sumByDate)  
+```
+The summary values of the repaired data set:
+``` {r Question 7 Part II}
+summary(sumByDate3)
+```
+Clearly the min, max, median, and mean values varied little or not at all, but the quartile values changed by 500-1000 steps.
+``` {r Question 7 Plot}
+# Generate histogram of repaired data set
+hist(sumByDate3$TotalSteps)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+
+### Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+``` {r Question 8}
+# Create data frame containing date and weekday information
+weekdays <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+DoW <- as.data.frame(weekdays(completeData$date))
+
+# Generate new weekday/weekend column based on correlated days of the week
+for( i in 1:nrow(DoW)) {                                                        
+        if( DoW[i,1] %in% weekdays ) {                                          
+#               print("DAY")                                                    
+                DoW[i,2] <- as.character("weekday")                             
+        } else {                                                                
+#               print("END")                                                    
+                DoW[i,2] <- as.character("weekend")                             
+        }                                                                       
+}                                                                               
+                                                                                
+completeData2 <- cbind(completeData, DoW[,2])                                   
+colnames(completeData2) <- c("Steps", "Date", "Interval", "WeekDayEnd")
+
+# Generate mean values based on weekday or weekend
+weekdayData <- completeData2[completeData2$WeekDayEnd == "weekday",]            
+weekdayDataMean <- as.data.frame(tapply(weekdayData$Steps, weekdayData$Interval, FUN=mean))
+colnames(weekdayDataMean) <- c("MeanSteps")                                     
+weekdayDataMean.df <- as.data.frame(cbind(weekdayDataMean$MeanSteps, row.names(weekdayDataMean), rep_len("weekday", length.out=nrow(weekdayDataMean))))
+                                                                                
+weekendData <- completeData2[completeData2$WeekDayEnd == "weekend",]            
+weekendDataMean <- as.data.frame(tapply(weekendData$Steps, weekendData$Interval, FUN=mean))
+colnames(weekendDataMean) <- c("MeanSteps")                                     
+weekendDataMean.df <- as.data.frame(cbind(weekendDataMean$MeanSteps, row.names(weekendDataMean), rep_len("weekend", length.out=nrow(weekendDataMean))))
+                                                  
+# Concatenate weekday/weekend datasets                               
+meanData.df <- rbind(weekdayDataMean.df, weekendDataMean.df)                    
+colnames(meanData.df) <- c("MeanSteps", "Interval", "WeekDayEnd")               
+meanData.df$Interval <- as.integer(as.character(meanData.df$Interval))          
+meanData.df$MeanSteps <- as.numeric(as.character(meanData.df$MeanSteps))        
+                                       
+# Generate panel plot comparing weekday to weekend step averages                                         
+qplot(Interval, MeanSteps, data = meanData.df, facets = WeekDayEnd~., geom="line")
+```
